@@ -620,7 +620,7 @@ function GuaranteesGrid() {
           </div>
         </div>
         <a
-          href="https://github.com/devndesigner6/ArgoOperator"
+          href="https://github.com/devndesigner6/argo-web"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 rounded-full border border-white/15 px-4 py-2 text-[12px] text-white/85 hover:bg-white/5"
@@ -826,7 +826,7 @@ function Closing() {
               Open playground <ArrowRight className="h-3.5 w-3.5" />
             </Link>
             <a
-              href="https://github.com/devndesigner6/ArgoOperator"
+              href="https://github.com/devndesigner6/argo-web"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.03] px-6 py-3 text-[13px] font-medium text-white/85 hover:bg-white/[0.07]"
@@ -867,7 +867,8 @@ function Footer() {
         <FooterCol
           title="Resources"
           items={[
-            { label: "GitHub", href: "https://github.com/devndesigner6/ArgoOperator" },
+            { label: "GitHub (EVM / Sepolia)", href: "https://github.com/devndesigner6/argo-web" },
+            { label: "GitHub (Cardano Runtime)", href: "https://github.com/devndesigner6/ArgoOperator" },
             { label: "Masumi Protocol", href: "https://masumi.network" },
             { label: "Cardano Preprod", href: "https://docs.cardano.org" },
           ]}

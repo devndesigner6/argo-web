@@ -178,7 +178,7 @@ export function AppNav() {
       {/* actions */}
       <div className="flex items-center gap-1">
         <a
-          href="https://github.com/devndesigner6/ArgoOperator"
+          href="https://github.com/devndesigner6/argo-web"
           target="_blank"
           rel="noreferrer"
           className="flex h-7 w-7 items-center justify-center rounded-full text-white/55 transition hover:bg-white/5 hover:text-white"
