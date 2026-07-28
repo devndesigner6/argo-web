@@ -3,11 +3,19 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/devndesigner6/argo-web/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/devndesigner6/argo-web?style=flat-square&color=yellow" /></a>
+  <a href="https://x.com/hemanttbuilds"><img alt="Follow @hemanttbuilds on X" src="https://img.shields.io/badge/X-Follow%20%40hemanttbuilds-blue?style=flat-square&logo=x" /></a>
   <a href="https://x.com/iEx_ec"><img alt="iExec Nox" src="https://img.shields.io/badge/iExec-Nox-yellow.svg?style=flat-square" /></a>
 </p>
 
-One multi-chain gateway for confidential AI browser agents. Describe a target mission, lock an escrow payment on Ethereum Sepolia or Cardano Preprod, run a secure web scraping session inside a Trusted Execution Environment (TEE), and return a cryptographically signed Proof-of-Execution.
+## What is Argo?
+
+Argo is an autonomous web agent gateway built for secure, multi-chain operations. It enables developers and users to run AI-driven browser agents that perform complex tasks on the live web (such as scanning pages, bypassing basic bot blockers, and monitoring target content). 
+
+To solve the privacy problems of public blockchains, Argo integrates the iExec Nox protocol. Sensitive data like target URLs, cookies, and login credentials are encrypted on the client side before any transaction is broadcast. This ensures that private data is never exposed on public block explorers. The runner only decrypts the payload inside a secure, off-chain Trusted Execution Environment (TEE). Upon completion, a cryptographically signed Proof-of-Execution is generated, giving users a verifiable receipt of the runner's actions.
+
+---
+
+## Key Features
 
 - **iExec Nox TEE Confidentiality:** Client-side prompt encryption (XOR byte masking) protects target URLs, session cookies, and API credentials from public blockchain explorers, decrypting them only inside the secure off-chain execution enclave.
 - **Multi-Chain Escrow Smart Contracts:** Supports both standard Solidity escrow settlement on Ethereum Sepolia and Cardano Preprod (via Masumi protocol).
@@ -26,17 +34,26 @@ One multi-chain gateway for confidential AI browser agents. Describe a target mi
 
 ## Getting Started
 
-### 1. Clone & Install
+### 1. Clone the Repository
+
+To copy the codebase locally, run the following commands:
 
 ```bash
 git clone https://github.com/devndesigner6/argo-web.git
 cd argo-web
+```
+
+### 2. Install Project Dependencies
+
+Install the frontend packages and deployment compilers:
+
+```bash
 npm install
 ```
 
-### 2. Configure Environment
+### 3. Configure the Local Environment
 
-Create a `.env` file in the root directory (copied from `.env.example`):
+Create a `.env` file in your project root folder by copying the example structure:
 
 ```env
 DATABASE_URL=postgres://...
@@ -47,15 +64,17 @@ CEREBRAS_API_KEY=your_cerebras_key
 ARGO_POE_SEED=your_poe_seed
 ```
 
-### 3. Deploy Smart Contract
+### 4. Compile & Deploy the Smart Contract
 
-To compile the solidity contract and update the codebase configurations automatically:
+To compile the solidity contract and update the internal code settings automatically:
 
 ```bash
 node scripts/compile-and-deploy.cjs
 ```
 
-### 4. Run the Dev Server
+### 5. Launch the Development Server
+
+Start the local server:
 
 ```bash
 npm run dev
