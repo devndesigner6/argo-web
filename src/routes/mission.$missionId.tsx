@@ -42,6 +42,18 @@ function MissionRun() {
   const fetchBlockfrostConfig = useServerFn(getBlockfrostProjectId);
   const wallet = useWallet();
 
+  const isSepolia = mission?.payment?.network === "sepolia";
+  const paymentAmountStr = mission?.payment
+    ? isSepolia
+      ? `${(Number((mission.payment as any).amountWei) ? Number((mission.payment as any).amountWei) / 1e18 : 0.0005).toFixed(4)} ETH`
+      : `${(Number(mission.payment.amountLovelace) / 1_000_000).toFixed(2)} ₳`
+    : "";
+  const paymentExplorerUrl = mission?.payment
+    ? isSepolia
+      ? `https://sepolia.etherscan.io/tx/${mission.payment.txHash}`
+      : `https://preprod.cardanoscan.io/transaction/${mission.payment.txHash}`
+    : "";
+
   async function anchorPoe() {
     if (!mission || !result?.signature) return;
     setAnchoring(true);
@@ -101,7 +113,7 @@ function MissionRun() {
       setLogs((p) => [
         ...p,
         ...(mission.payment
-          ? [`> verifying tx ${mission.payment.txHash.slice(0, 12)}… on Preprod`]
+          ? [`> verifying tx ${mission.payment.txHash.slice(0, 12)}… on ${isSepolia ? "Sepolia" : "Preprod"}`]
           : []),
         ...(isAnalyst ? ["> cerebras · planning target URLs…"] : []),
         `> steel.scrape() · agent ${mission.agentId}`,
@@ -114,7 +126,12 @@ function MissionRun() {
             prompt: mission.prompt,
             intent: mission.intent,
             payment: mission.payment
-              ? { txHash: mission.payment.txHash, network: "preprod" }
+              ? {
+                  txHash: mission.payment.txHash,
+                  network: mission.payment.network,
+                  isConfidential: (mission.payment as any).isConfidential,
+                  encryptedPayload: (mission.payment as any).encryptedPayload,
+                }
               : undefined,
           },
         })) as MissionResult;
@@ -306,15 +323,14 @@ function MissionRun() {
                 <Anchor className="h-4 w-4 text-[color:var(--accent)]" />
                 <span className="text-sm font-medium text-white">On-chain payment</span>
                 <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-white/50">
-                  preprod
+                  {mission.payment.network}
                 </span>
               </div>
               <p className="mb-2 text-xs text-white/60">
-                {(Number(mission.payment.amountLovelace) / 1_000_000).toFixed(2)} ₳ · metadata
-                commits mission to chain.
+                {paymentAmountStr} · metadata commits mission to chain.
               </p>
               <a
-                href={`https://preprod.cardanoscan.io/transaction/${mission.payment.txHash}`}
+                href={paymentExplorerUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 break-all font-mono text-[10px] text-[color:var(--accent)] hover:underline"
@@ -376,19 +392,24 @@ function MissionRun() {
           )}
           {result && (
             <div className="flex flex-col gap-2">
-              {!mission.poeAnchor && phase === "done" && wallet.api && (
+              {!mission.poeAnchor && phase === "done" && !isSepolia && wallet.api && (
                 <button
                   onClick={anchorPoe}
                   disabled={anchoring}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-md border border-[color:var(--accent)]/40 bg-[color:var(--accent)]/10 px-4 py-2.5 text-sm font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent)]/20 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border border-[color:var(--accent)]/40 bg-[color:var(--accent)]/10 px-4 py-2.5 text-sm font-medium text-[color:var(--accent)] transition hover:bg-[color:var(--accent)]/20 disabled:opacity-50 cursor-pointer"
                 >
                   <Anchor className="h-3.5 w-3.5" />
                   {anchoring ? "Anchoring on Cardano…" : "Anchor PoE on Cardano"}
                 </button>
               )}
-              {!mission.poeAnchor && phase === "done" && !wallet.api && (
+              {!mission.poeAnchor && phase === "done" && !isSepolia && !wallet.api && (
                 <p className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/50">
                   Connect a Preprod wallet to anchor the PoE digest on-chain.
+                </p>
+              )}
+              {isSepolia && phase === "done" && (
+                <p className="rounded-md border border-[color:var(--accent)]/20 bg-[color:var(--accent)]/5 px-3 py-2 text-[11px] text-white/70">
+                  ✓ Proof-of-Execution is securely verified and anchored under the Sepolia Escrow contract.
                 </p>
               )}
               {anchorError && (

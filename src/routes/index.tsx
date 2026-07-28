@@ -20,6 +20,7 @@ import ShinyText from "../components/react-bits/ShinyText.jsx";
 import DecryptedText from "../components/react-bits/DecryptedText.jsx";
 import TiltedCard from "../components/react-bits/TiltedCard.jsx";
 import SpecularButton from "../components/react-bits/SpecularButton.jsx";
+import { useWallet } from "../lib/wallet-context";
 
 const Dither = lazy(() => import("../components/react-bits/Dither.jsx"));
 const DotField = lazy(() => import("../components/DotField.jsx"));
@@ -75,6 +76,8 @@ function CodeChip({ children }: { children: React.ReactNode }) {
 
 function Hero() {
   const navigate = useNavigate();
+  const wallet = useWallet();
+  const isEvm = !!wallet.evmAddress;
   return (
     <section className="relative overflow-hidden bg-[#0a0a0a]">
       <div className="absolute inset-0 [mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_70%,transparent_100%)]">
@@ -105,16 +108,16 @@ function Hero() {
         <h1 className="mt-8 max-w-5xl text-[46px] font-normal leading-[1.05] tracking-[-0.02em] text-white [font-family:var(--font-serif)] [text-shadow:0_2px_24px_rgba(0,0,0,0.9)] md:text-[76px] flex flex-col items-center">
           <BlurText text="Meet! Argo." delay={100} animateBy="words" />
           <span className="mt-2 flex flex-wrap justify-center gap-x-3">
-            <BlurText text="Built for a paid" delay={250} animateBy="words" />
+            <BlurText text={isEvm ? "Built for a paid, secure" : "Built for a paid"} delay={250} animateBy="words" />
             <span className="italic text-[color:var(--accent)] font-normal">
-              <DecryptedText text="Cardano" animateOn="view" revealDirection="center" sequential />
+              <DecryptedText text={isEvm ? "Confidential" : "Cardano"} animateOn="view" revealDirection="center" sequential />
             </span>
             <BlurText text="agent web." delay={400} animateBy="words" />
           </span>
         </h1>
 
         <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-white/75 [text-shadow:0_1px_12px_rgba(0,0,0,0.9)]">
-          Autonomous browser missions with cryptographic proof-of-execution, settled in ADA — in
+          Autonomous browser missions with cryptographic proof-of-execution, settled in {isEvm ? "ETH (Sepolia)" : "ADA"} — in
           seconds.
         </p>
 
@@ -200,7 +203,7 @@ function Playground() {
     <section className="mx-auto max-w-7xl px-6 pb-32">
       <SectionLabel>Playground · Live demo</SectionLabel>
       <h2 className="max-w-3xl text-[36px] font-normal leading-[1.08] tracking-[-0.02em] text-white [font-family:var(--font-serif)] md:text-[52px]">
-        Run a real mission on <span className="italic text-[color:var(--accent)]">Preprod</span>.
+        Run a real mission on <span className="italic text-[color:var(--accent)]">Testnet</span>.
       </h2>
       <p className="mt-4 max-w-2xl text-[14px] leading-relaxed text-white/55">
         Pick an agent below to load a signed report from a genuine on-chain mission. Every trace
@@ -423,21 +426,21 @@ function Playground() {
 const STEPS = [
   {
     n: "01",
-    title: "Connect a Cardano wallet",
-    body: "CIP-30 handshake with Eternl, Lace, or Nami on Preprod. Argo reads the address, network, and available balance — no seed phrase, no custody.",
-    chip: "window.cardano[wallet].enable()",
+    title: "Connect a wallet",
+    body: "Handshake with MetaMask, Rabby (EVM) or Eternl, Lace, Nami (Cardano) on Sepolia/Preprod. Argo reads address, network, and balance — no seed phrase, no custody.",
+    chip: "window.ethereum / window.cardano",
   },
   {
     n: "02",
     title: "Draft the mission",
     body: "Describe the task in plain English. Cerebras-hosted Llama 3.3 70B produces a signed plan: URLs to visit, DOM patterns to extract, synthesis prompt.",
-    chip: "prompt → plan { steps, sources[], budget_ada }",
+    chip: "prompt → plan { steps, sources[], budget }",
   },
   {
     n: "03",
-    title: "Escrow ADA on-chain",
-    body: "A Preprod tx locks the mission price into a Masumi escrow. The agent cannot spend it until proof-of-execution verifies.",
-    chip: "tx.build → sign → submit → confirmed(1)",
+    title: "Escrow funds on-chain",
+    body: "A Sepolia or Preprod tx locks the mission fee in smart contract escrow. The agent cannot spend it until proof-of-execution verifies.",
+    chip: "tx.submit → lock(price) → confirmed",
   },
   {
     n: "04",
@@ -558,8 +561,8 @@ const GUARANTEES = [
   {
     tag: "NETWORK_PINNED",
     level: "MEDIUM",
-    body: "Wallet network is checked pre-escrow. Mainnet ADA cannot accidentally land in a Preprod mission.",
-    example: "e.g. require(networkId === 0)",
+    body: "Wallet network is checked pre-escrow. Mainnet assets cannot accidentally land in a testnet mission.",
+    example: "e.g. require(chainId === 11155111)",
   },
   {
     tag: "OPEN_REPUTATION",

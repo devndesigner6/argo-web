@@ -16,8 +16,10 @@ const input = z.object({
     .optional(),
   payment: z
     .object({
-      txHash: z.string().regex(/^[0-9a-f]{64}$/i),
-      network: z.literal("preprod"),
+      txHash: z.string().regex(/^(0x)?[0-9a-f]{64}$/i),
+      network: z.enum(["preprod", "sepolia"]),
+      isConfidential: z.boolean().optional(),
+      encryptedPayload: z.string().optional(),
     })
     .optional(),
 });
@@ -56,9 +58,10 @@ export type MissionSignature = {
 
 export type OnChainCommit = {
   txHash: string;
-  network: "preprod";
+  network: "preprod" | "sepolia";
   block: string | null;
-  amountLovelace: string | null;
+  amountLovelace?: string | null;
+  amountEther?: string | null;
 };
 
 export type AnalystTrace = {
@@ -252,27 +255,61 @@ export const runMission = createServerFn({ method: "POST" })
 
     assertIntentBinding(data.intent, data.agentId, data.prompt);
 
-    // If the caller supplied a payment (wallet-connected flow), we REFUSE to
-    // burn Steel quota until Blockfrost confirms the tx exists on Preprod
-    // AND its metadata commits to this exact missionId + agentId. That's
-    // the trust anchor for "you actually paid to run this."
+    // Verify escrow deposits. Support both Cardano Blockfrost Preprod checks
+    // and Ethereum Sepolia smart contract escrow verification for the WTF Hackathon.
     let onChain: OnChainCommit | undefined;
+    let actualPrompt = data.prompt;
+
     if (data.payment) {
-      const { verifyMissionTxOnChain } = await import("./blockfrost.server");
-      const check = await verifyMissionTxOnChain({
-        txHash: data.payment.txHash,
-        missionId: data.missionId,
-        agentId: data.agentId,
-      });
-      if (!check.ok) {
-        throw new Error(`Payment verification failed: ${check.reason ?? "unknown"}`);
+      if (data.payment.network === "sepolia") {
+        const { verifySepoliaMission } = await import("./sepolia-verify.server");
+        const check = await verifySepoliaMission({
+          missionId: data.missionId,
+          agentId: data.agentId,
+        });
+        if (!check.ok) {
+          throw new Error(`Sepolia Payment verification failed: ${check.reason ?? "unknown"}`);
+        }
+        onChain = {
+          txHash: data.payment.txHash,
+          network: "sepolia" as const,
+          block: "confirmed",
+          amountEther: check.amountEth,
+        };
+
+        // iExec TEE Decryption layer simulation.
+        // Decrypt the XOR-encoded client payload off-chain inside the secure server execution.
+        if (data.payment.isConfidential && data.payment.encryptedPayload) {
+          try {
+            const hex = data.payment.encryptedPayload;
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < bytes.length; i++) {
+              bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16) ^ 0x47;
+            }
+            actualPrompt = new TextDecoder().decode(bytes);
+            data.prompt = actualPrompt; // Override prompt with decrypted plaintext
+          } catch (e) {
+            console.error("TEE Decryption error:", e);
+            throw new Error("Failed to decrypt secure prompt payload inside TEE context.");
+          }
+        }
+      } else {
+        const { verifyMissionTxOnChain } = await import("./blockfrost.server");
+        const check = await verifyMissionTxOnChain({
+          txHash: data.payment.txHash,
+          missionId: data.missionId,
+          agentId: data.agentId,
+        });
+        if (!check.ok) {
+          throw new Error(`Cardano Payment verification failed: ${check.reason ?? "unknown"}`);
+        }
+        onChain = {
+          txHash: check.txHash,
+          network: "preprod" as const,
+          block: check.block,
+          amountLovelace: check.amountLovelace,
+        };
       }
-      onChain = {
-        txHash: check.txHash,
-        network: "preprod",
-        block: check.block,
-        amountLovelace: check.amountLovelace,
-      };
     }
 
     const startedAt = Date.now();

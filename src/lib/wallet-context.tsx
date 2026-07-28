@@ -38,13 +38,19 @@ type WalletState = {
   available: string[];
   connect: (name: string) => Promise<void>;
   disconnect: () => void;
-  /** Re-enable the current wallet and return a fresh CIP-30 API handle.
-   *  Wallets shut down idle API objects (Lace/Eternl throw
-   *  "Remote API ... was shutdown"), so call this right before signing. */
   getFreshApi: () => Promise<CIP30Api>;
   signMessage: (payload: string) => Promise<{ signature: string; key: string; addressHex: string }>;
   connecting: boolean;
   error: string | null;
+
+  // EVM wallet extensions
+  evmAddress: string | null;
+  evmChainId: number | null;
+  evmBalance: string | null;
+  evmConnecting: boolean;
+  connectEvm: () => Promise<void>;
+  disconnectEvm: () => void;
+  signEvmMessage: (payload: string) => Promise<string>;
 };
 
 const Ctx = createContext<WalletState | null>(null);
@@ -105,6 +111,7 @@ function strToHex(s: string): string {
 }
 
 const LS_NAME = "argo.wallet.name";
+const LS_EVM = "argo.wallet.evm";
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [name, setName] = useState<string | null>(null);
@@ -115,6 +122,95 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [available, setAvailable] = useState<string[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // EVM wallet states
+  const [evmAddress, setEvmAddress] = useState<string | null>(null);
+  const [evmChainId, setEvmChainId] = useState<number | null>(null);
+  const [evmBalance, setEvmBalance] = useState<string | null>(null);
+  const [evmConnecting, setEvmConnecting] = useState(false);
+
+  const getEthereum = () => {
+    if (typeof window === "undefined") return undefined;
+    return (window as any).ethereum;
+  };
+
+  const disconnectEvm = useCallback(() => {
+    setEvmAddress(null);
+    setEvmChainId(null);
+    setEvmBalance(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(LS_EVM);
+    }
+  }, []);
+
+  const connectEvm = useCallback(async () => {
+    setError(null);
+    setEvmConnecting(true);
+    try {
+      const eth = getEthereum();
+      if (!eth) throw new Error("No EVM wallet found. Try installing MetaMask or Rabby.");
+      
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
+      const chainIdHex = await eth.request({ method: "eth_chainId" });
+      const addr = accounts[0];
+      
+      setEvmAddress(addr);
+      setEvmChainId(parseInt(chainIdHex, 16));
+
+      const balHex = await eth.request({
+        method: "eth_getBalance",
+        params: [addr, "latest"],
+      });
+      const balWei = BigInt(balHex);
+      const balEth = (Number(balWei) / 1e18).toFixed(4);
+      setEvmBalance(balEth);
+
+      window.localStorage.setItem(LS_EVM, "connected");
+
+      // Set up EIP-1193 listeners
+      eth.on("accountsChanged", (accs: string[]) => {
+        if (accs.length === 0) {
+          disconnectEvm();
+        } else {
+          setEvmAddress(accs[0]);
+        }
+      });
+      eth.on("chainChanged", (hex: string) => {
+        setEvmChainId(parseInt(hex, 16));
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      console.error("EVM Connect Failed:", e);
+    } finally {
+      setEvmConnecting(false);
+    }
+  }, [disconnectEvm]);
+
+  const signEvmMessage = useCallback(async (payload: string) => {
+    const eth = getEthereum();
+    if (!eth || !evmAddress) throw new Error("EVM wallet not connected");
+    const hexMessage = "0x" + Array.from(new TextEncoder().encode(payload))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const signature = await eth.request({
+      method: "personal_sign",
+      params: [hexMessage, evmAddress],
+    });
+    return signature as string;
+  }, [evmAddress]);
+
+  // EVM Auto-reconnect
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(LS_EVM);
+    if (saved === "connected") {
+      const t = setTimeout(() => {
+        if (getEthereum()) connectEvm().catch(() => {});
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [connectEvm]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -176,13 +272,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(LS_NAME);
     if (!saved) return;
-    // Give injected wallets a beat to mount.
     const t = setTimeout(() => {
       if (getCardano()?.[saved]?.enable) void connect(saved);
     }, 250);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connect]);
 
   const getFreshApi = useCallback(async (): Promise<CIP30Api> => {
     if (!name) throw new Error("Connect a wallet first");
@@ -218,6 +312,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       signMessage,
       connecting,
       error,
+
+      // EVM exports
+      evmAddress,
+      evmChainId,
+      evmBalance,
+      evmConnecting,
+      connectEvm,
+      disconnectEvm,
+      signEvmMessage,
     }),
     [
       name,
@@ -232,6 +335,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       signMessage,
       connecting,
       error,
+      evmAddress,
+      evmChainId,
+      evmBalance,
+      evmConnecting,
+      connectEvm,
+      disconnectEvm,
+      signEvmMessage,
     ],
   );
 

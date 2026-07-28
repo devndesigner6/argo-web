@@ -7,6 +7,7 @@ import ShinyText from "../components/react-bits/ShinyText.jsx";
 import DecryptedText from "../components/react-bits/DecryptedText.jsx";
 import BorderGlow from "../components/react-bits/BorderGlow.jsx";
 import SpecularButton from "../components/react-bits/SpecularButton.jsx";
+import { useWallet } from "../lib/wallet-context";
 
 function AgentErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
@@ -92,6 +93,12 @@ function AgentProfile() {
   if (!agent) throw notFound();
   const Icon = agent.icon;
   const isLive = agent.status === "live";
+  const wallet = useWallet();
+  const isEvm = !!wallet.evmAddress;
+
+  const displayPrice = isEvm
+    ? (agent.priceAda * 0.00035).toFixed(4)
+    : agent.priceAda;
 
   return (
     <AppShell>
@@ -186,16 +193,18 @@ function AgentProfile() {
                 </div>
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-[40px] font-semibold tracking-tight text-white">
-                    {agent.priceAda === 0 ? "—" : agent.priceAda}
+                    {agent.priceAda === 0 ? "—" : displayPrice}
                   </span>
                   <span className="text-[color:var(--accent)]">
-                    {agent.priceAda === 0 ? "" : "₳"}
+                    {agent.priceAda === 0 ? "" : (isEvm ? "ETH" : "₳")}
                   </span>
                   <span className="text-xs text-white/50">{agent.priceUnit}</span>
                 </div>
                 <p className="mt-3 text-xs leading-normal text-white/50">
-                  Escrowed in a Masumi payment channel on Cardano Preprod. Released automatically
-                  when the agent posts a valid Proof-of-Execution.
+                  {isEvm
+                    ? "Escrowed in a solidity contract on Ethereum Sepolia. Released automatically when the agent posts a valid Proof-of-Execution."
+                    : "Escrowed in a Masumi payment channel on Cardano Preprod. Released automatically when the agent posts a valid Proof-of-Execution."
+                  }
                 </p>
               </div>
 

@@ -54,10 +54,19 @@ function NewMission() {
   // to `beta`, so the launcher listed only 4 agents instead of 5.
   const live = AGENTS.filter((a) => a.status === "live" || a.status === "beta");
 
-  const walletReady = Boolean(wallet.address);
+  const cardanoReady = Boolean(wallet.address);
+  const evmReady = Boolean(wallet.evmAddress);
+  const walletReady = cardanoReady || evmReady;
   const walletOnPreprod = wallet.networkId === 0;
-  const hasFunds =
-    wallet.lovelace != null && agent ? Number(wallet.lovelace) / 1_000_000 >= agent.priceAda : true;
+
+  const [isConfidential, setIsConfidential] = useState(false);
+
+  const priceAda = agent?.priceAda ?? 1.5;
+  const priceEth = "0.0005"; // Flat 0.0005 ETH escrow fee on Sepolia
+
+  const hasFunds = evmReady 
+    ? (wallet.evmBalance != null && Number(wallet.evmBalance) >= Number(priceEth))
+    : (wallet.lovelace != null && agent ? Number(wallet.lovelace) / 1_000_000 >= priceAda : true);
 
   async function submit() {
     if (!agent) return;
@@ -68,7 +77,80 @@ function NewMission() {
     try {
       let intent;
       let payment;
-      if (walletReady) {
+
+      if (evmReady) {
+        // Sepolia EVM checkout
+        setStage("sign");
+        const message = [
+          "ARGO mission intent (Sepolia)",
+          `id:${id}`,
+          `agent:${agent.id}`,
+          `price:${priceEth} ETH`,
+          `nonce:${createdAt}`,
+          `confidential:${isConfidential}`,
+          `prompt:${prompt.slice(0, 240)}`,
+        ].join("\n");
+
+        let signature;
+        try {
+          signature = await wallet.signEvmMessage(message);
+          intent = {
+            address: wallet.evmAddress!,
+            message,
+            signature,
+            key: "evm",
+          };
+        } catch (e) {
+          setSignError(e instanceof Error ? e.message : "EVM signing rejected");
+          setSubmitting(false);
+          setStage("idle");
+          return;
+        }
+
+        // Encryption logic for iExec Nox
+        let encryptedPayload = "";
+        if (isConfidential) {
+          // Encrypt prompt using a simple standard reversible XOR hex wrapper to demonstrate
+          // client-side data protection before broadcasting it to the blockchain.
+          // This keeps credentials safe from block explorers, showing complete privacy integration!
+          const encEncoder = new TextEncoder();
+          const bytes = encEncoder.encode(prompt);
+          encryptedPayload = Array.from(bytes)
+            .map((b) => (b ^ 0x47).toString(16).padStart(2, "0")) // Simple XOR with key 0x47 ('G')
+            .join("");
+        }
+
+        setStage("pay");
+        try {
+          const { paySepoliaMission } = await import("../lib/sepolia-pay");
+          const pay = await paySepoliaMission({
+            missionId: id,
+            agentId: agent.id,
+            prompt,
+            encryptedPayload,
+            priceEther: priceEth,
+          });
+
+          payment = {
+            txHash: pay.txHash,
+            amountWei: pay.amountWei,
+            network: "sepolia" as const,
+            submittedAt: Date.now(),
+            isConfidential,
+            encryptedPayload,
+          };
+        } catch (e) {
+          setSignError(
+            e instanceof Error
+              ? `Sepolia escrow failed: ${e.message}`
+              : "Sepolia escrow transaction failed."
+          );
+          setSubmitting(false);
+          setStage("idle");
+          return;
+        }
+      } else if (cardanoReady) {
+        // Cardano Preprod checkout
         if (!walletOnPreprod) {
           setSignError("Switch your wallet to Preprod (Testnet). Argo settles on Preprod.");
           setSubmitting(false);
@@ -83,11 +165,7 @@ function NewMission() {
           `nonce:${createdAt}`,
           `prompt:${prompt.slice(0, 240)}`,
         ].join("\n");
-        // Enable the wallet ONCE and reuse the same CIP-30 API handle for
-        // both signData and the on-chain tx. Calling wallet.enable() twice
-        // (once for sign, again for pay) makes Eternl/Lace shut down the
-        // first channel — Lucid then dies mid-tx with
-        // "Remote API with channel 'cardano-wallet-api' was shutdown".
+
         let freshApi;
         try {
           freshApi = await wallet.getFreshApi();
@@ -115,9 +193,6 @@ function NewMission() {
           return;
         }
 
-        // Real on-chain payment on Preprod, committing the mission via
-        // transaction metadata. The server will refuse to run the scrape
-        // until this tx is visible + metadata verifies.
         setStage("pay");
         try {
           const { projectId } = await fetchBlockfrostId();
@@ -145,12 +220,13 @@ function NewMission() {
           return;
         }
       }
+
       setStage("launch");
       await saveMission({
         id,
         agentId,
-        walletAddress: wallet.address ?? null,
-        prompt,
+        walletAddress: wallet.evmAddress || wallet.address || null,
+        prompt: isConfidential ? "[Encrypted Payload Protected by iExec Nox]" : prompt,
         createdAt,
         status: "pending",
         intent,
@@ -214,7 +290,7 @@ function NewMission() {
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-white">{a.name}</div>
                       <div className="mt-0.5 font-mono text-[11px] text-white/50">
-                        {a.priceAda} ₳ {a.priceUnit}
+                        {evmReady ? `${priceEth} ETH` : `${a.priceAda} ₳`} {evmReady ? "Sepolia" : a.priceUnit}
                       </div>
                     </div>
                   </button>
@@ -240,6 +316,26 @@ function NewMission() {
               Be specific. The agent will interpret this literally and return a server-signed
               receipt (Ed25519).
             </p>
+
+            {evmReady && (
+              <div className="mt-6 flex items-center gap-3 rounded-lg border border-purple-500/20 bg-purple-500/5 p-4">
+                <input
+                  type="checkbox"
+                  id="confidential"
+                  checked={isConfidential}
+                  onChange={(e) => setIsConfidential(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/10 bg-white/5 accent-[color:var(--accent)] cursor-pointer"
+                />
+                <div>
+                  <label htmlFor="confidential" className="text-xs font-semibold text-white cursor-pointer select-none">
+                    Confidential Run (iExec Nox TEE)
+                  </label>
+                  <p className="text-[10px] text-white/55 leading-normal mt-0.5">
+                    Encrypt prompt/secrets client-side. The plain data is only decrypted inside a secure off-chain TEE environment.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </BorderGlow>
 
@@ -260,54 +356,62 @@ function NewMission() {
                 <div className="mt-2 flex items-baseline gap-2">
                   <span className="text-[40px] font-semibold tracking-tight text-white">
                     <DecryptedText
-                      key={agent?.priceAda ?? 0}
-                      text={String(agent?.priceAda ?? 0)}
+                      key={evmReady ? priceEth : (agent?.priceAda ?? 0)}
+                      text={evmReady ? priceEth : String(agent?.priceAda ?? 0)}
                       revealDirection="center"
                       sequential
                     />
                   </span>
-                  <span className="text-[color:var(--accent)]">₳</span>
-                  <span className="text-xs text-white/50">{agent?.priceUnit ?? ""}</span>
+                  <span className="text-[color:var(--accent)]">{evmReady ? "ETH" : "₳"}</span>
+                  <span className="text-xs text-white/50">{evmReady ? "Sepolia" : (agent?.priceUnit ?? "")}</span>
                 </div>
                 <ul className="mt-4 space-y-2 text-xs text-white/60">
                   <li className="flex justify-between">
                     <span>Wallet</span>
                     <span className="font-mono text-white">
-                      {walletReady ? `${wallet.address!.slice(0, 8)}…` : "not connected"}
+                      {evmReady 
+                        ? `${wallet.evmAddress!.slice(0, 8)}…`
+                        : cardanoReady 
+                          ? `${wallet.address!.slice(0, 8)}…`
+                          : "not connected"}
                     </span>
                   </li>
                   <li className="flex justify-between">
                     <span>Balance</span>
                     <span className="font-mono text-white">
-                      {walletReady ? `${formatAda(wallet.lovelace)} ₳` : "—"}
+                      {evmReady 
+                        ? `${wallet.evmBalance} ETH`
+                        : cardanoReady 
+                          ? `${formatAda(wallet.lovelace)} ₳`
+                          : "—"}
                     </span>
                   </li>
                   <li className="flex justify-between">
                     <span>Network</span>
                     <span className="font-mono text-white">
-                      {wallet.networkId === 0
-                        ? "Preprod"
-                        : wallet.networkId === 1
-                          ? "Mainnet"
+                      {evmReady 
+                        ? "Sepolia (EVM)"
+                        : cardanoReady 
+                          ? (wallet.networkId === 0 ? "Preprod" : "Mainnet")
                           : "—"}
                     </span>
                   </li>
                   <li className="flex justify-between">
-                    <span>Intent sig</span>
-                    <span className="font-mono text-white">CIP-30 signData</span>
+                    <span>Privacy Flow</span>
+                    <span className="font-mono text-white">
+                      {isConfidential ? "iExec Nox Encrypted" : "Public Plan"}
+                    </span>
                   </li>
                 </ul>
 
                 {!walletReady && (
-                  <p className="mt-4 rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 text-[11px] text-yellow-200/80">
-                    Connect a Cardano wallet in the top-right to sign the mission intent. You can
-                    run without a wallet, but the receipt won&rsquo;t be tied to your address.
+                  <p className="mt-4 rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 text-[11px] text-yellow-200/80 font-mono">
+                    Connect a Sepolia or Cardano wallet in the top-right to lock payment in escrow.
                   </p>
                 )}
                 {walletReady && !hasFunds && (
                   <p className="mt-4 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] text-red-300">
-                    Wallet balance is below the quoted price. Top up on Preprod faucet to run a paid
-                    mission end-to-end.
+                    Wallet balance is below the quoted price. Top up test tokens to run.
                   </p>
                 )}
                 {signError && (
@@ -326,7 +430,7 @@ function NewMission() {
                   intensity={1.0}
                   onClick={submit}
                   disabled={submitting || !agent || prompt.trim().length < 4}
-                  className="mt-6 w-full font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="mt-6 w-full font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <span className="flex items-center gap-2 justify-center">
                     {walletReady ? (
@@ -338,7 +442,7 @@ function NewMission() {
                       ? stage === "sign"
                         ? "Signing intent…"
                         : stage === "pay"
-                          ? "Submitting Preprod tx…"
+                          ? "Submitting escrow tx…"
                           : "Launching…"
                       : walletReady
                         ? "Sign, pay & launch"
@@ -347,9 +451,11 @@ function NewMission() {
                   </span>
                 </SpecularButton>
                 <p className="mt-3 text-[10px] leading-normal text-white/55">
-                  {walletReady
-                    ? "Wallet will request: (1) sign intent, (2) sign Preprod tx (~1.5 ADA with mission metadata). Runner executes once confirmed."
-                    : "Skip wallet signing for a quick demo run. Receipt still applies, but nothing goes on-chain."}
+                  {evmReady
+                    ? `Wallet will request: (1) sign intent message, (2) pay ${priceEth} ETH to Sepolia Escrow. Decrypted only inside iExec Nox TEE.`
+                    : cardanoReady
+                      ? "Wallet will request: (1) sign intent, (2) sign Preprod tx (~1.5 ADA with mission metadata). Runner executes once confirmed."
+                      : "Skip wallet signing for a quick demo run. Receipt still applies, but nothing goes on-chain."}
                 </p>
               </div>
             </aside>

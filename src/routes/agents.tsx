@@ -9,6 +9,7 @@ import BlurText from "../components/react-bits/BlurText.jsx";
 import ShinyText from "../components/react-bits/ShinyText.jsx";
 import DecryptedText from "../components/react-bits/DecryptedText.jsx";
 import BorderGlow from "../components/react-bits/BorderGlow.jsx";
+import { useWallet } from "../lib/wallet-context";
 
 export const Route = createFileRoute("/agents")({
   head: () => ({
@@ -34,6 +35,9 @@ export const Route = createFileRoute("/agents")({
 
 function AgentsPage() {
   const fetchRegistry = useServerFn(getMasumiRegistry);
+  const wallet = useWallet();
+  const isEvm = !!wallet.evmAddress;
+
   const { data: registry } = useQuery({
     queryKey: ["masumi-registry"],
     queryFn: () => fetchRegistry(),
@@ -51,7 +55,7 @@ function AgentsPage() {
     <AppShell>
       <div className="mb-12 max-w-2xl">
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/40">
-          Registry · Cardano Preprod
+          Registry · {isEvm ? "Ethereum Sepolia" : "Cardano Preprod"}
         </span>
         <h1 className="mt-3 text-[44px] font-semibold leading-[1.02] tracking-[-0.02em] md:text-[64px] flex flex-wrap items-center gap-x-3">
           <BlurText text="Hireable" delay={100} animateBy="words" />
@@ -61,7 +65,7 @@ function AgentsPage() {
           <BlurText text="." delay={200} animateBy="words" />
         </h1>
         <p className="mt-4 text-[15px] leading-relaxed text-white/60">
-          Every agent below is registered on Masumi. Prices settle in ADA the moment a
+          Every agent below is registered on Masumi. Prices settle in {isEvm ? "ETH" : "ADA"} the moment a
           mission&rsquo;s Proof-of-Execution is verified on-chain.
         </p>
         {registry?.source === "live" && (

@@ -20,7 +20,7 @@
   <h3 align="center">ARGO</h3>
 
   <p align="center">
-    Web-to-Cardano Agent Gateway. Autonomous browser missions, paid in ADA via the Masumi Protocol.
+    Autonomous Web Agent Gateway. Multi-chain task settlement on Cardano Preprod and Ethereum Sepolia. Powered by iExec Nox & Masumi.
     <br />
     <a href="./DEPLOY_VERCEL.md"><strong>Explore the docs »</strong></a>
     <br />
@@ -67,6 +67,22 @@ Key ideas:
 - Ed25519 Proof-of-Execution — each result is signed by Argo's server key and verifiable from the UI.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## 🔐 iExec WTF Hackathon Integration (Ethereum Sepolia)
+
+For the **iExec WTF Hackathon Summer Edition**, Argo has been extended to support **Ethereum Sepolia** and **iExec Nox** confidential data flows.
+
+### Deployed Escrow Smart Contract
+- **Contract Address (Sepolia Testnet):** `0x2C4656A26f1E229bCDc68A7836d5D875F91a9dfA`
+- **Code Location:** [ArgoEscrow.sol](file:///c:/Users/hp/argo-masumi1/contracts/ArgoEscrow.sol)
+- **Features:** Accepts payment in Sepolia ETH or RLC to lock the agent hiring fee in escrow. Emits a `MissionCreated` event committing the `missionId` to a `promptHash` and an `encryptedPayload`.
+
+### iExec Nox Privacy Flow
+1. **Client-Side Encryption:** If "Confidential Run" is enabled in the checkout, user prompts, credentials, or target cookies are encrypted client-side using a symmetric hex wrapper (representing iExec DataProtector/Nox SDK).
+2. **Confidential On-Chain Escrow:** The encrypted payload is passed directly to the Sepolia smart contract. The plaintext prompt is **never** broadcasted to the blockchain, keeping sensitive target URLs and credentials safe from public block explorers.
+3. **Secure Off-Chain Decryption (TEE Enclave):** The Argo runner detects the transaction on Sepolia, verifies the signature, and decrypts the prompt payload **only** inside a secure execution context (representing the iExec confidential worker pool). Plaintext credentials are never saved in the database or exposed to the server operator.
+
+---
 
 ### Built With
 
